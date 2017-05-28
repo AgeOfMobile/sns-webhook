@@ -1,27 +1,41 @@
 const express = require('express')
 const app = express()
 const bodyParser = require('body-parser')
+const URL = require('url');
 
-app.use(bodyParser.json())
+app.use(bodyParser.json({ "type": "*/*"}))
 
 const get = function(url, callback) {
   const http = url.startsWith('https') ? require('https') : require('http');
   return http.get(url, callback);
 }
 
-app.post('/', function (req, res) {
-  console.log("Received: {}", req.body);  
+const post = function(url, success, error) {
+  const http = url.startsWith('https') ? require('https') : require('http');
+  url = URL.parse(url);
+  const req = http.request({
+    hostname: url.hostname,
+    port: url.port,
+    path: url.path,
+    method: 'POST',
+    rejectUnauthorized: false
+  }, success).on('error', error);
+  req.end();
+}
+
+app.post('/', function (req, res) {  
   var snsType = req.headers['x-amz-sns-message-type'];
-  var url = '';
+  
+  const success = (e) => res.send("OK");
+  const error = (e) => res.json(e);
+
   if (snsType == 'SubscriptionConfirmation') {
     url = req.body.SubscribeURL;
+    get(url, success, error);
   } else if (snsType == 'Notification') {
-    url = req.body.Webhook;
-  } 
-
-  if (url != '') {
-    get(url, () => res.send("OK"))
-      .on('error', (e) => res.send("FAILED: " + e.message));
+    var message = JSON.parse(req.body.Message);
+    url = message.Records[0].customData;
+    post(url, success, error);
   } else {
     res.send("");
   }
